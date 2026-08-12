@@ -100,3 +100,15 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 <div align="center">
 Made with ❤️ using Flutter
 </div>
+
+## l420x Branch
+
+`l420x` is a UOS ARM64 (HUAWEI Kirin 9000C / Maleoon 910) adaptation branch built on top of the upstream code (`https://github.com/Chevey339/kelivo`). Changes in this branch:
+
+- **Whole-UI 1.5× scaling** via `Transform.scale` (controlled by `KELIVO_UI_SCALE` env var), window forced to 1920×1080 so the UI is never smaller than the 1.5× design size.
+- **CJK + emoji rendering**: bundled merged font (Droid Sans Fallback + Symbola, 59k glyphs) as the primary family for chat/theme/code blocks, plus system font aliases in `/usr/share/fonts/kelivo-aliases/` so family names (Roboto, monospace, PingFang SC, emoji, …) resolve to CJK-capable fonts.
+- **Closing the window quits the app** on Linux (tray defaults disabled; re-enable in Settings → Display).
+- **Hardware acceleration**: `GDK_GL=gles` (HiGFX GLES, Maleoon 910) and Wayland-by-default launcher (`/usr/bin/kelivo`).
+- **deb packaging** recipe under `package/` (gitignored), installed to `/opt/kelivo`.
+
+Fork: https://github.com/zyqfork/kelivo.git

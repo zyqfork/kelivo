@@ -32,6 +32,12 @@ List<String> getPlatformFontFallback() {
   if (defaultTargetPlatform == TargetPlatform.windows) {
     return kWindowsFontFamilyFallback;
   }
+  if (defaultTargetPlatform == TargetPlatform.linux) {
+    // Bundled CJK fallback first: guarantees Chinese glyphs render even when
+    // system fontconfig discovery fails to resolve the macOS-style names in
+    // kDefaultFontFamilyFallback (PingFang SC / Heiti SC / Hiragino Sans GB).
+    return <String>['DroidSansFallback', ...kDefaultFontFamilyFallback];
+  }
   return kDefaultFontFamilyFallback;
 }
 
@@ -189,6 +195,9 @@ ThemeData buildLightTheme(ColorScheme? dynamicScheme) {
   final theme = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    // Bundled CJK font as the default family so ALL theme text
+    // (Chinese UI included) renders without system font discovery.
+    fontFamily: 'DroidSansFallback',
     scaffoldBackgroundColor: scheme.surface,
     extensions: <ThemeExtension<dynamic>>[AppSemanticColors.light(scheme)],
     snackBarTheme: SnackBarThemeData(
@@ -255,6 +264,9 @@ ThemeData buildLightThemeForScheme(
   final theme = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    // Bundled CJK font as the default family so ALL theme text
+    // (Chinese UI included) renders without system font discovery.
+    fontFamily: 'DroidSansFallback',
     scaffoldBackgroundColor: scheme.surface,
     extensions: <ThemeExtension<dynamic>>[AppSemanticColors.light(scheme)],
     snackBarTheme: SnackBarThemeData(
@@ -343,6 +355,9 @@ ThemeData buildDarkTheme(ColorScheme? dynamicScheme) {
   final theme = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    // Bundled CJK font as the default family so ALL theme text
+    // (Chinese UI included) renders without system font discovery.
+    fontFamily: 'DroidSansFallback',
     scaffoldBackgroundColor: scheme.surface,
     extensions: <ThemeExtension<dynamic>>[AppSemanticColors.dark(scheme)],
     snackBarTheme: SnackBarThemeData(
@@ -408,6 +423,9 @@ ThemeData buildDarkThemeForScheme(
   final theme = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    // Bundled CJK font as the default family so ALL theme text
+    // (Chinese UI included) renders without system font discovery.
+    fontFamily: 'DroidSansFallback',
     scaffoldBackgroundColor: scheme.surface,
     extensions: <ThemeExtension<dynamic>>[AppSemanticColors.dark(scheme)],
     snackBarTheme: SnackBarThemeData(

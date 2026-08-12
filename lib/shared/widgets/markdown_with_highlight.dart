@@ -182,6 +182,10 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
           letterSpacing:
               widget.baseStyle?.letterSpacing ?? (_isZh(context) ? 0.0 : 0.05),
           color: null,
+          // Bundled CJK font guarantees Chinese renders in chat/markdown text
+          // even when callers pass a fresh TextStyle without a fallback list.
+          fontFamily: 'DroidSansFallback',
+          fontFamilyFallback: const <String>['DroidSansFallback'],
         );
 
     // Replace default components and add our own where needed
@@ -528,6 +532,8 @@ class _MarkdownWithCodeHighlightState extends State<MarkdownWithCodeHighlight> {
               fontFamily: codeFontFamily,
               fontSize: 13,
               height: 1.4,
+              // CJK fallback for code blocks containing Chinese.
+              fontFamilyFallback: const <String>['DroidSansFallback'],
             ).copyWith(color: csCtx.onSurface),
             softWrap: true,
             overflow: TextOverflow.visible,

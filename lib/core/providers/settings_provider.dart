@@ -1104,12 +1104,13 @@ class SettingsProvider extends ChangeNotifier {
         );
     _desktopAutoSwitchTopics =
         prefs.getBool(_displayDesktopAutoSwitchTopicsKey) ?? false;
-    // Desktop: tray settings (default enabled on desktop platforms)
+    // Desktop: tray settings (default enabled on desktop platforms;
+    // on Linux default OFF so closing the window truly quits the app).
     final trayPref = prefs.getBool(_displayDesktopShowTrayKey);
     if (trayPref == null) {
       final isDesktop =
           Platform.isMacOS || Platform.isWindows || Platform.isLinux;
-      _desktopShowTray = isDesktop;
+      _desktopShowTray = isDesktop && !Platform.isLinux;
       await prefs.setBool(_displayDesktopShowTrayKey, _desktopShowTray);
     } else {
       _desktopShowTray = trayPref;

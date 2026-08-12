@@ -180,6 +180,15 @@ flutter:
     - assets/icon_mac.png
     - assets/mermaid.min.js
     - assets/html/mark.html
+    - assets/fonts/
+
+  # Bundled CJK fallback font (DroidSansFallbackFull, Apache-2.0, full GB18030).
+  # Guarantees Chinese glyphs render on Linux even when system fontconfig
+  # discovery fails to resolve macOS-style fallback names (PingFang SC etc.).
+  fonts:
+    - family: DroidSansFallback
+      fonts:
+        - asset: assets/fonts/DroidSansFallbackFull.ttf
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

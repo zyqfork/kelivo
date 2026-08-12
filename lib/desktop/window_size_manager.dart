@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show Platform;
+
+/// UI scale from the KELIVO_UI_SCALE env var (e.g. "1.5" for 150%).
+/// The launcher wrapper (/usr/bin/kelivo) sets this on UOS ARM64 so the
+/// interface is comfortable on high-DPI displays. When > 1 the desktop
+/// window is forced to 1280x720 * scale so the scaled UI is actually larger.
+double get uiScale =>
+    double.tryParse(Platform.environment['KELIVO_UI_SCALE'] ?? '') ?? 1.0;
 
 /// Manages desktop window size/position persistence and defaults.
 class WindowSizeManager {

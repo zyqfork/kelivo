@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'dart:async';
-import 'dart:ui' show AppExitResponse;
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+import 'dart:ui' show AppExitResponse, Size;
 import 'l10n/app_localizations.dart';
 import 'features/home/pages/home_page.dart';
 import 'features/migration/hive_to_sqlite_migration_page.dart';
@@ -11,6 +13,7 @@ import 'desktop/desktop_home_page.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'desktop/desktop_window_controller.dart';
+import 'desktop/window_size_manager.dart' show uiScale;
 import 'desktop/desktop_tray_controller.dart';
 // import 'package:logging/logging.dart' as logging;
 // Theme is now managed in SettingsProvider
@@ -80,6 +83,44 @@ final RouteObserver<ModalRoute<dynamic>> routeObserver =
     RouteObserver<ModalRoute<dynamic>>();
 bool _didCheckUpdates = false; // one-time update check flag
 bool _didEnsureAssistants = false; // ensure defaults after l10n ready
+
+// UI scale (KELIVO_UI_SCALE env; see window_size_manager.dart).
+// The launcher wrapper (/usr/bin/kelivo) sets this on UOS ARM64 so the
+// interface is comfortable on high-DPI displays.
+//
+// The whole UI is laid out at windowSize/scale and rendered scaled up by
+// scale, so icons, spacing, layout and text all scale together. (The GTK
+// embedder only exposes integer device-pixel ratios, so a fractional 1.5x
+// cannot be achieved via DPR; see [_scaleApp].)
+
+/// Scales the entire app UI by [uiScale] (e.g. 1.5 = 150%).
+///
+/// Lays the child out at `windowSize / scale` and renders it scaled up by
+/// [uiScale], so the scaled result exactly fills the window at any size.
+Widget _scaleApp(BuildContext context, Widget? child) {
+  final double scale = uiScale;
+  if (scale <= 0) return child ?? const SizedBox.shrink();
+  final view = WidgetsBinding.instance.platformDispatcher.views.first;
+  final Size viewSize = view.physicalSize / view.devicePixelRatio;
+  // Whole-UI scaling: lay out at the fixed 1280x720 design size and render
+  // scaled up so the result fills the window. The window is forced to
+  // 1280x720 * scale (see desktop_window_controller), so at the default
+  // 1920x1080 window this renders the UI at exactly 1.5x.
+  final double s = scale * math.min(
+        viewSize.width / (1280 * scale),
+        viewSize.height / (720 * scale),
+      );
+  return Center(
+    child: Transform.scale(
+      scale: s,
+      child: SizedBox(
+        width: 1280,
+        height: 720,
+        child: child ?? const SizedBox.shrink(),
+      ),
+    ),
+  );
+}
 
 Future<void> main() async {
   await runZoned(
@@ -310,7 +351,10 @@ Future<void> _initRestoreFailureWindow() async {
       return;
     }
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(title: 'Kelivo'),
+      const WindowOptions(
+        title: 'Kelivo',
+        size: Size(1920, 1080), // 150% default size for UOS ARM64
+      ),
       () async {
         await windowManager.show();
         await windowManager.focus();
@@ -347,6 +391,7 @@ class _RestoreFailureApp extends StatelessWidget {
               restart: PlatformUtils.restartApp,
               appDataDirectory: appDataDirectory,
             ),
+      builder: (context, child) => _scaleApp(context, child),
     );
   }
 }
@@ -508,8 +553,10 @@ class MigrationApp extends StatelessWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       theme: buildLightThemeForScheme(palette.light),
       darkTheme: buildDarkThemeForScheme(palette.dark),
-      builder: (context, child) =>
-          AppSnackBarOverlay(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => _scaleApp(
+        context,
+        AppSnackBarOverlay(child: child ?? const SizedBox.shrink()),
+      ),
       home: RestoreOutcomeNotice(
         outcome: restoreOutcome,
         child: HiveToSqliteMigrationPage(service: service),
@@ -943,12 +990,15 @@ class MyApp extends StatelessWidget {
                   // Enforce app font as a default across the tree for Texts without explicit family
                   return AnnotatedRegion<SystemUiOverlayStyle>(
                     value: overlay,
-                    child: effectiveAppFont == null
-                        ? appWithOverlays
-                        : DefaultTextStyle.merge(
-                            style: TextStyle(fontFamily: effectiveAppFont),
-                            child: appWithOverlays,
-                          ),
+                    child: _scaleApp(
+                      ctx,
+                      effectiveAppFont == null
+                          ? appWithOverlays
+                          : DefaultTextStyle.merge(
+                              style: TextStyle(fontFamily: effectiveAppFont),
+                              child: appWithOverlays,
+                            ),
+                    ),
                   );
                 },
               );

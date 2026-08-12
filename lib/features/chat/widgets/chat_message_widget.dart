@@ -326,7 +326,14 @@ Widget _buildTextToSpeechReplayRow(
           text,
           maxLines: maxLines,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: fontSize, height: 1.4, color: textColor),
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1.4,
+            color: textColor,
+            // Bundled CJK fallback: this preview may contain Chinese.
+            fontFamily: 'DroidSansFallback',
+            fontFamilyFallback: const <String>['DroidSansFallback'],
+          ),
         ),
       ),
       const SizedBox(width: 8),
@@ -1730,16 +1737,33 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
     Widget content;
     if (settings.enableUserMarkdown) {
       content = DefaultTextStyle.merge(
-        style: TextStyle(fontSize: baseUser, height: 1.45),
+        style: TextStyle(
+          fontSize: baseUser,
+          height: 1.45,
+          // Bundled CJK fallback: chat body text must render Chinese.
+          fontFamily: 'DroidSansFallback',
+          fontFamilyFallback: const <String>['DroidSansFallback'],
+        ),
         child: MarkdownWithCodeHighlight(
           text: visualText,
-          baseStyle: TextStyle(fontSize: baseUser, height: 1.45),
+          baseStyle: TextStyle(
+            fontSize: baseUser,
+            height: 1.45,
+            fontFamily: 'DroidSansFallback',
+            fontFamilyFallback: const <String>['DroidSansFallback'],
+          ),
         ),
       );
     } else {
       content = Text(
         visualText,
-        style: TextStyle(fontSize: baseUser, height: 1.4, color: cs.onSurface),
+        style: TextStyle(
+          fontSize: baseUser,
+          height: 1.4,
+          color: cs.onSurface,
+          fontFamily: 'DroidSansFallback',
+          fontFamilyFallback: const <String>['DroidSansFallback'],
+        ),
       );
     }
 
@@ -2106,7 +2130,13 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
       assistantContent = MarkdownWithCodeHighlight(
         text: visualContent,
         onCitationTap: (id) => _handleCitationTap(id),
-        baseStyle: TextStyle(fontSize: baseAssistant, height: 1.5),
+        baseStyle: TextStyle(
+          fontSize: baseAssistant,
+          height: 1.5,
+          // Bundled CJK fallback: assistant replies are mostly Chinese.
+          fontFamily: 'DroidSansFallback',
+          fontFamilyFallback: const <String>['DroidSansFallback'],
+        ),
         streaming: widget.message.isStreaming,
       );
     } else {
@@ -2644,6 +2674,10 @@ class _ChatMessageWidgetState extends State<ChatMessageWidget> {
                                             baseStyle: TextStyle(
                                               fontSize: baseTranslation,
                                               height: 1.4,
+                                              fontFamilyFallback: const <
+                                                      String>[
+                                                'DroidSansFallback'
+                                              ],
                                             ),
                                           );
                                     } else {
@@ -4054,7 +4088,13 @@ class _ChainOfThoughtReasoningStepState
         return RepaintBoundary(
           child: MarkdownWithCodeHighlight(
             text: text.isNotEmpty ? text : '…',
-            baseStyle: TextStyle(fontSize: 12.5, height: 1.32),
+            baseStyle: TextStyle(
+              fontSize: 12.5,
+              height: 1.32,
+              // Bundled CJK fallback: reasoning text is Chinese.
+              fontFamily: 'DroidSansFallback',
+              fontFamilyFallback: const <String>['DroidSansFallback'],
+            ),
             streaming: widget.step.loading,
           ),
         );

@@ -31,11 +31,19 @@ class DesktopWindowController with WindowListener {
     _attachListeners();
     // Windows custom title bar is handled in main (TitleBarStyle.hidden)
 
-    final initialSize = await _sizeMgr.getInitialSize();
-    const minSize = Size(
-      WindowSizeManager.minWindowWidth,
-      WindowSizeManager.minWindowHeight,
-    );
+    var initialSize = await _sizeMgr.getInitialSize();
+    // On high-DPI UOS ARM64 (KELIVO_UI_SCALE=1.5) force the window to the
+    // 1.5x design size (1280x720 * scale). window_manager would otherwise
+    // restore the persisted (small) size and the scaled UI would stay small.
+    if (uiScale > 1) {
+      initialSize = Size(1280 * uiScale, 720 * uiScale);
+    }
+    final minSize = uiScale > 1
+        ? Size(1280 * uiScale, 720 * uiScale)
+        : const Size(
+            WindowSizeManager.minWindowWidth,
+            WindowSizeManager.minWindowHeight,
+          );
     const maxSize = Size(
       WindowSizeManager.maxWindowWidth,
       WindowSizeManager.maxWindowHeight,
@@ -73,6 +81,11 @@ class DesktopWindowController with WindowListener {
       });
     } else {
       await windowManager.waitUntilReadyToShow(options, () async {
+        // Override any size restored from window_manager's persisted cache
+        // so the 1.5x-scaled UI is actually larger on UOS ARM64.
+        if (uiScale > 1) {
+          await windowManager.setSize(initialSize);
+        }
         // Show first, then restore position to avoid macOS jump/flicker.
         await windowManager.show();
         await windowManager.focus();
