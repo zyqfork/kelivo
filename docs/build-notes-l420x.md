@@ -68,18 +68,26 @@ Description: Kelivo LLM Chat Client (UOS ARM64 l420x build)
 #!/bin/bash
 # Kelivo launcher for UOS ARM64 (HUAWEI Kirin 9000C / Maleoon 910)
 #
-# Hardware rendering only: the Maleoon 910 GPU is reachable via EGL
-# (libGFX_hisi) on the Wayland backend. X11 GLX falls back to llvmpipe
-# (software rendering), so refuse to start without Wayland instead of
-# silently degrading.
+# Preferred path: Wayland + GLES hardware rendering (libGFX_hisi).
+# Fallback: X11 with software rendering (llvmpipe) if Wayland is missing,
+# so the app still starts (degraded) instead of refusing.
 export GDK_GL=gles
 export KELIVO_UI_SCALE=1.5
 
-if [ ! -e /run/user/$(id -u)/wayland-0 ]; then
-  echo "Kelivo 需要 Wayland 会话（硬件 GLES 渲染）。请切换 Wayland 后重试。" >&2
-  exit 1
+wayland_alive() {
+  [ -n "$WAYLAND_DISPLAY" ] || WAYLAND_DISPLAY=wayland-0
+  local sock="/run/user/$(id -u)/$WAYLAND_DISPLAY"
+  [ -S "$sock" ] || return 1
+  timeout 2 python3 -c "import socket,sys; s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.connect('$sock')" 2>/dev/null
+}
+
+if wayland_alive; then
+  export GDK_BACKEND=wayland
+else
+  echo "警告: Wayland 不可用，使用 X11 兜底（可能为软件渲染 llvmpipe）" >&2
+  export GDK_BACKEND=x11
+  export DISPLAY="${DISPLAY:-:0}"
 fi
-export GDK_BACKEND=wayland
 
 if [ ! -e /usr/lib/aarch64-linux-gnu/libGFX_hisi.so.0.8.0 ]; then
   echo "警告: 未检测到 Maleoon GPU 驱动 libGFX_hisi，渲染可能为软件模式" >&2
@@ -102,7 +110,7 @@ sudo dpkg -i /tmp/kelivo-1.2.0-arm64.deb
 /usr/bin/kelivo
 ```
 
-- 图形后端：**强制 Wayland**（`GDK_BACKEND=wayland`），无 Wayland 拒绝启动（见下方"硬件渲染守卫"）
+- 图形后端：**Wayland 优先，X11 软兜底**（启动脚本实际探测 wayland socket 可连接性；不可用时 `GDK_BACKEND=x11` 降级运行）
 - 渲染：`GDK_GL=gles`（HiGFX GLES 加速，Maleoon 910 无桌面版 GLX 的 GL）
 - 缩放：`KELIVO_UI_SCALE=1.5`
 
@@ -110,8 +118,8 @@ sudo dpkg -i /tmp/kelivo-1.2.0-arm64.deb
 
 Maleoon 910 的硬件 EGL 实现是 `libGFX_hisi.so.0.8.0`（导出 713 个 EGL/GLES 符号）+ `libbishenggpucompiler_v200.so.15`（GPU 着色器编译器），通过 `/dev/dri/card0`（hisi-dpu-drm）驱动。该硬件路径只在 **Wayland + GDK_GL=gles** 下可用：
 
-- X11 GLX 会回退到 **llvmpipe 软件渲染**（glxinfo 实证：`llvmpipe (LLVM 13.0.1)`）
-- 因此启动脚本**强制 Wayland**，无 Wayland 会话直接报错退出，绝不让 llvmpipe 兜底
+- X11 GLX 会回退到 **llvmpipe 软件渲染**（glxinfo 实证：`llvmpipe (LLVM 13.0.1)`），且 GTK3 在 X11 下无法为 Flutter 建 EGL 上下文（窗口 20x20 空白）
+- 因此启动脚本**优先 Wayland**：用 python 实测 `connect()` wayland socket，失败才 X11 兜底（软渲染，保证应用可启动）
 - 附加检查 libGFX_hisi 存在性，缺失时警告
 
 验证进程确为硬件渲染：
@@ -224,13 +232,19 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 ### 6.7 X11 回退 llvmpipe 软件渲染
 - **现象**：X11 会话下渲染缓慢/劣化（glxinfo 显示 `llvmpipe (LLVM 13.0.1)`）
 - **根因**：Maleoon 910 的硬件 EGL（libGFX_hisi）只在 Wayland 路径可用，X11 GLX 没有硬件驱动
-- **解决**：启动脚本强制 `GDK_BACKEND=wayland`，无 Wayland 会话直接拒绝启动（硬件渲染守卫）；验证：`lsof -p $(pgrep -x kelivo) | grep -E "GFX|bisheng|dri"` 应命中
+- **解决**：启动脚本优先 Wayland（实测 socket 可连接），不可用时 X11 兜底并警告（软渲染，保证可启动）；验证硬件渲染：`lsof -p $(pgrep -x kelivo) | grep -E "GFX|bisheng|dri"` 应命中
 
 ### 6.8 deb 打包坑
 - **现象**：`dpkg-deb: 解析 control 第 6 行…缺失结尾的换行符`
 - **根因**：DEBIAN/control 末尾没有换行
 - **解决**：文件末尾补 `\n`
 - **另一个坑**：重装 deb 会覆盖 `/usr/bin/kelivo` 启动脚本——打包 recipe 必须始终包含 `usr/bin/kelivo`（不要只打包 opt/kelivo）
+- **又一个坑**：deb 若不含 `usr/share/applications/kelivo.desktop` + hicolor 图标，重装后桌面启动图标消失（bamf/桌面缓存失效）；必须包含 16-512 各尺寸 `kelivo.png` 并触发 `gtk-update-icon-cache` + `update-desktop-database`
+
+### 6.9 wayland socket 被 mv 破坏
+- **现象**：应用报 `cannot open display` / `ECONNREFUSED`，但 `ss -xln` 显示 socket 在 LISTEN
+- **根因**：`sudo mv wayland-0` 移走再移回会破坏文件与监听 socket 的绑定（文件 inode 与 socket 失配），新客户端全部连接失败，旧连接不受影响
+- **解决**：不要移动 `/run/user/1000/wayland-0`；误操作后唯一修复是重启合成器（DDE 下 kill kwin_wayland 会掉到 lightdm 登录界面，需重新登录会话）
 
 ### 6.7 Linux 关窗不退出
 - **现象**：关闭窗口进程残留（托盘）
