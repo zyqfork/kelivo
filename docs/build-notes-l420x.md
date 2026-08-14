@@ -62,15 +62,29 @@ Maintainer: zyq <zyq@zyq-PC.local>
 Description: Kelivo LLM Chat Client (UOS ARM64 l420x build)
 ```
 
-`usr/bin/kelivo`（启动包装脚本，关键：GLES + 缩放 + Wayland 优先）：
+`usr/bin/kelivo`（启动包装脚本，关键：**硬件渲染守卫** + GLES + 缩放）：
 
 ```bash
 #!/bin/bash
+# Kelivo launcher for UOS ARM64 (HUAWEI Kirin 9000C / Maleoon 910)
+#
+# Hardware rendering only: the Maleoon 910 GPU is reachable via EGL
+# (libGFX_hisi) on the Wayland backend. X11 GLX falls back to llvmpipe
+# (software rendering), so refuse to start without Wayland instead of
+# silently degrading.
 export GDK_GL=gles
 export KELIVO_UI_SCALE=1.5
-if [ -e /run/user/$(id -u)/wayland-0 ]; then
-  export GDK_BACKEND=wayland
+
+if [ ! -e /run/user/$(id -u)/wayland-0 ]; then
+  echo "Kelivo 需要 Wayland 会话（硬件 GLES 渲染）。请切换 Wayland 后重试。" >&2
+  exit 1
 fi
+export GDK_BACKEND=wayland
+
+if [ ! -e /usr/lib/aarch64-linux-gnu/libGFX_hisi.so.0.8.0 ]; then
+  echo "警告: 未检测到 Maleoon GPU 驱动 libGFX_hisi，渲染可能为软件模式" >&2
+fi
+
 exec /opt/kelivo/kelivo "$@"
 ```
 
@@ -88,9 +102,26 @@ sudo dpkg -i /tmp/kelivo-1.2.0-arm64.deb
 /usr/bin/kelivo
 ```
 
-- 图形后端：优先 Wayland（`GDK_BACKEND=wayland`），否则 X11
+- 图形后端：**强制 Wayland**（`GDK_BACKEND=wayland`），无 Wayland 拒绝启动（见下方"硬件渲染守卫"）
 - 渲染：`GDK_GL=gles`（HiGFX GLES 加速，Maleoon 910 无桌面版 GLX 的 GL）
 - 缩放：`KELIVO_UI_SCALE=1.5`
+
+### 硬件渲染守卫（2026-08 修订）
+
+Maleoon 910 的硬件 EGL 实现是 `libGFX_hisi.so.0.8.0`（导出 713 个 EGL/GLES 符号）+ `libbishenggpucompiler_v200.so.15`（GPU 着色器编译器），通过 `/dev/dri/card0`（hisi-dpu-drm）驱动。该硬件路径只在 **Wayland + GDK_GL=gles** 下可用：
+
+- X11 GLX 会回退到 **llvmpipe 软件渲染**（glxinfo 实证：`llvmpipe (LLVM 13.0.1)`）
+- 因此启动脚本**强制 Wayland**，无 Wayland 会话直接报错退出，绝不让 llvmpipe 兜底
+- 附加检查 libGFX_hisi 存在性，缺失时警告
+
+验证进程确为硬件渲染：
+
+```bash
+# 进程应持有 /dev/dri/card0 fd，且加载 libGFX_hisi + libbishenggpucompiler
+lsof -p $(pgrep -x kelivo) | grep -iE "GFX|bisheng|dri"
+# Wayland EGL 下 eglinfo 应显示 EGL_HUAWEI_partial_update（华为 GPU 特有扩展）
+eglinfo | grep HUAWEI
+```
 
 验证窗口尺寸（Wayland 会话下 X 工具不可见，用 KWin 截图）：
 
@@ -129,10 +160,18 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 **布局层整体缩放**（`lib/main.dart` 的 `_scaleApp`）：
 
 - GTK embedder 只暴露**整数 DPR**，无法用 devicePixelRatio 实现 1.5×，所以放弃 DPR 方案
-- 子组件按设计尺寸 **1280×720** 布局，用 `Transform.scale` 整体放大 `s` 倍
-- 实际缩放自适应：`s = scale × min(窗口宽/(1280·scale), 窗口高/(720·scale))`
-- 窗口铺满主屏时（2880×1920）：`s = 1.5 × min(2880/1920, 1920/1080) = 2.25`，UI 放大铺满宽度
+- **子组件按 `窗口尺寸/scale` 布局**，用 `Transform.scale(scale)` 整体放大 —— 缩放结果精确铺满窗口，任何屏幕比例（16:9、3:2）都无黑边
+- `KELIVO_UI_SCALE=1.5` 时：2880×1920 屏上逻辑布局 1920×1280，放大 1.5× = 2880×1920 铺满
 - 配套改动：`_scaleApp` 挂到**正常路径** `MyApp` 的 builder 上
+
+### 黑块/letterbox 修复（2026-08 修订）
+
+早期版本把布局固定为 1280×720 再 `min()` 缩放（`s = scale × min(w/(1280·scale), h/(720·scale))`）：
+
+- 窗口 1920×1080（16:9，与设计同比例）时恰好铺满 ✓
+- 窗口跟随主屏到 2880×1920（3:2）后：`s = 1.5 × min(2880/1920, 1920/1080) = 2.25`，UI 高只有 `720×2.25 = 1620`，窗口高 1920 → **上下各 150px 纯黑带**（截图实证 y=604-716 处黑条）
+
+修订为**布局 = 窗口/scale**（见上），黑带消失（截图实证：四边 0 黑像素）。
 
 ### 窗口跟随主屏（2026-08 修订）
 
@@ -141,9 +180,9 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 - `DesktopWindowController.primaryDisplaySize()`（`lib/desktop/desktop_window_controller.dart`）用 `screen_retriever` 获取主屏物理尺寸；失败时 fallback 到 `1280×uiScale × 720×uiScale`
 - `uiScale > 1` 时窗口初始尺寸 = 主屏尺寸，`minSize` 保持 `1280×uiScale × 720×uiScale`（保证 UI 最小可读）
 - `linux/runner/my_application.cc` 的 `gtk_window_set_default_size` 改回 1280×720（真实尺寸由 Dart 层决定）
-- `_scaleApp` 本身自适应，无需改动
+- `_scaleApp` 改为布局 = 窗口/scale（见上"黑块修复"）
 
-现在窗口铺满 2880×1920，UI 自动放大 2.25× 铺满窗口，`KELIVO_UI_SCALE` 语义为**最小 UI 缩放下限**。
+现在窗口铺满 2880×1920，UI 放大 1.5× 精确铺满窗口，`KELIVO_UI_SCALE` 语义为**最小 UI 缩放下限**。
 
 ---
 
@@ -182,6 +221,17 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 - **根因**：Maleoon 910 无桌面 GLX，只有 GLES
 - **解决**：`GDK_GL=gles` 环境变量
 
+### 6.7 X11 回退 llvmpipe 软件渲染
+- **现象**：X11 会话下渲染缓慢/劣化（glxinfo 显示 `llvmpipe (LLVM 13.0.1)`）
+- **根因**：Maleoon 910 的硬件 EGL（libGFX_hisi）只在 Wayland 路径可用，X11 GLX 没有硬件驱动
+- **解决**：启动脚本强制 `GDK_BACKEND=wayland`，无 Wayland 会话直接拒绝启动（硬件渲染守卫）；验证：`lsof -p $(pgrep -x kelivo) | grep -E "GFX|bisheng|dri"` 应命中
+
+### 6.8 deb 打包坑
+- **现象**：`dpkg-deb: 解析 control 第 6 行…缺失结尾的换行符`
+- **根因**：DEBIAN/control 末尾没有换行
+- **解决**：文件末尾补 `\n`
+- **另一个坑**：重装 deb 会覆盖 `/usr/bin/kelivo` 启动脚本——打包 recipe 必须始终包含 `usr/bin/kelivo`（不要只打包 opt/kelivo）
+
 ### 6.7 Linux 关窗不退出
 - **现象**：关闭窗口进程残留（托盘）
 - **根因**：桌面平台托盘默认开启
@@ -197,7 +247,12 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 - **根因**：Flutter 构建产物不含 sqlite 动态库
 - **解决**：从 `/lib/aarch64-linux-gnu/libsqlite3.so.0.8.6` 拷贝进 bundle/lib/
 
-### 6.10 Trellis 脚本需要 Python 3.8+（开发环境）
+### 6.10 UI 缩放 letterbox 黑带
+- **现象**：窗口铺满主屏后，上下出现纯黑条带（截图实证 y=604-716 黑带）
+- **根因**：`_scaleApp` 布局固定 1280×720 再 min() 缩放；3:2 屏（2880×1920）与 16:9 设计比例不同，UI 高度 1620 < 窗口 1920，留出黑边
+- **解决**：布局改为 `窗口尺寸/scale`，Transform.scale(scale) 后精确铺满任意比例屏幕
+
+### 6.11 Trellis 脚本需要 Python 3.8+（开发环境）
 - **现象**：`task.py` 报 `cannot import name 'TypedDict'`
 - **根因**：UOS 系统 Python 3.7，TypedDict 是 3.8 才进 typing
 - **解决**：用 nix 商店的 Python 3.13 运行（`/nix/store/…/python3.13`）
@@ -208,7 +263,7 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 
 | 文件 | 改动 |
 |---|---|
-| `lib/main.dart` | `_scaleApp` 整体缩放 + 正常路径 builder + 恢复失败窗口跟随主屏 |
+| `lib/main.dart` | `_scaleApp` 整体缩放（布局=窗口/scale，无黑边）+ 正常路径 builder + 恢复失败窗口跟随主屏 |
 | `lib/desktop/desktop_window_controller.dart` | 窗口初始尺寸跟随主屏（screen_retriever） |
 | `lib/desktop/window_size_manager.dart` | `uiScale` getter（读 KELIVO_UI_SCALE） |
 | `lib/theme/theme_factory.dart` | Linux 字体回退 + DroidSansFallback 默认族 |

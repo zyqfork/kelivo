@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse, Size;
 import 'l10n/app_localizations.dart';
 import 'features/home/pages/home_page.dart';
@@ -101,22 +100,15 @@ Widget _scaleApp(BuildContext context, Widget? child) {
   if (scale <= 0) return child ?? const SizedBox.shrink();
   final view = WidgetsBinding.instance.platformDispatcher.views.first;
   final Size viewSize = view.physicalSize / view.devicePixelRatio;
-  // Whole-UI scaling: lay out at the fixed 1280x720 design size and render
-  // scaled up so the result fills the window. The window is forced to
-  // 1280x720 * scale (see desktop_window_controller), so at the default
-  // 1920x1080 window this renders the UI at exactly 1.5x.
-  final double s = scale * math.min(
-        viewSize.width / (1280 * scale),
-        viewSize.height / (720 * scale),
-      );
-  return Center(
-    child: Transform.scale(
-      scale: s,
-      child: SizedBox(
-        width: 1280,
-        height: 720,
-        child: child ?? const SizedBox.shrink(),
-      ),
+  // Whole-UI scaling: lay the child out at windowSize / scale and render it
+  // scaled up by scale, so the scaled result exactly fills the window at any
+  // size and aspect ratio (no letterboxing on 3:2 or 16:9 displays).
+  return Transform.scale(
+    scale: scale,
+    child: SizedBox(
+      width: viewSize.width / scale,
+      height: viewSize.height / scale,
+      child: child ?? const SizedBox.shrink(),
     ),
   );
 }
