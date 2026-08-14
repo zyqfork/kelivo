@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse, Size;
 import 'l10n/app_localizations.dart';
@@ -350,10 +349,11 @@ Future<void> _initRestoreFailureWindow() async {
       await windowManager.focus();
       return;
     }
+    final displaySize = await DesktopWindowController.primaryDisplaySize();
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(
+      WindowOptions(
         title: 'Kelivo',
-        size: Size(1920, 1080), // 150% default size for UOS ARM64
+        size: displaySize,
       ),
       () async {
         await windowManager.show();

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 
 import 'window_size_manager.dart';
 import 'dart:async';
@@ -19,6 +20,18 @@ class DesktopWindowController with WindowListener {
   Timer? _resizeDebounce;
   static const _debounceDuration = Duration(milliseconds: 400);
 
+  /// Primary display size (physical pixels). Falls back to the 1.5x design
+  /// size (1280x720 * scale) when screen_retriever is unavailable.
+  static Future<Size> primaryDisplaySize() async {
+    try {
+      final display = await screenRetriever.getPrimaryDisplay();
+      if (display.size.width > 0 && display.size.height > 0) {
+        return display.size;
+      }
+    } catch (_) {}
+    return Size(1280 * uiScale, 720 * uiScale);
+  }
+
   Future<void> initializeAndShow({String? title}) async {
     if (kIsWeb) return;
     if (!(defaultTargetPlatform == TargetPlatform.windows ||
@@ -32,11 +45,12 @@ class DesktopWindowController with WindowListener {
     // Windows custom title bar is handled in main (TitleBarStyle.hidden)
 
     var initialSize = await _sizeMgr.getInitialSize();
-    // On high-DPI UOS ARM64 (KELIVO_UI_SCALE=1.5) force the window to the
-    // 1.5x design size (1280x720 * scale). window_manager would otherwise
+    // On high-DPI UOS ARM64 (KELIVO_UI_SCALE=1.5) follow the primary display
+    // size so the window fills the screen and the adaptive whole-UI scaling
+    // (_scaleApp) enlarges the UI to fill it. window_manager would otherwise
     // restore the persisted (small) size and the scaled UI would stay small.
     if (uiScale > 1) {
-      initialSize = Size(1280 * uiScale, 720 * uiScale);
+      initialSize = await primaryDisplaySize();
     }
     final minSize = uiScale > 1
         ? Size(1280 * uiScale, 720 * uiScale)
@@ -82,7 +96,7 @@ class DesktopWindowController with WindowListener {
     } else {
       await windowManager.waitUntilReadyToShow(options, () async {
         // Override any size restored from window_manager's persisted cache
-        // so the 1.5x-scaled UI is actually larger on UOS ARM64.
+        // so the scaled UI fills the primary display on UOS ARM64.
         if (uiScale > 1) {
           await windowManager.setSize(initialSize);
         }
