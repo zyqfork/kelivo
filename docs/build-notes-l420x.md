@@ -83,6 +83,9 @@ wayland_alive() {
 
 if wayland_alive; then
   export GDK_BACKEND=wayland
+  # 必须：GTK3 与 Flutter 共享 wl_display 时，libGFX_hisi 的 wayland 对象表冲突导致
+  # SIG 6 崩溃（见 6.12）。GTK 层走 Mesa EGL，Flutter 仍用 libGFX_hisi 硬件渲染。
+  export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libEGL_mesa.so.0
 else
   echo "警告: Wayland 不可用，使用 X11 兜底（可能为软件渲染 llvmpipe）" >&2
   export GDK_BACKEND=x11
@@ -271,6 +274,13 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 - **根因**：UOS 系统 Python 3.7，TypedDict 是 3.8 才进 typing
 - **解决**：用 nix 商店的 Python 3.13 运行（`/nix/store/…/python3.13`）
 
+### 6.12 Wayland 下白屏闪退（GTK 与 Flutter 共享 wl_display 冲突）
+- **现象**：启动 10~120s 后 SIG 6 崩溃（abort in libwayland-client `wl_display_dispatch_queue_pending`）；拖动窗口立即触发；窗口呈白屏/黑屏
+- **根因**：GTK3 主线程与 Flutter 渲染线程共享同一个 wl_display；libGFX_hisi（华为 EGL，`libEGL.so.1` 链接目标）直接操作 wayland 对象表，两侧互相踩踏。WAYLAND_DEBUG 日志每次启动出现 `discarded [unknown]@NN.[event 0]`（对象 ID 错乱），coredump 多次（16:56/17:02/17:36/17:37/17:38）
+- **排查结论**：纯 GTK3 应用正常（排除 GTK 层）；X11 兜底不可行（libGFX_hisi 的 EGL 不支持 X11 平台，context 全失败，窗口 20x20 空白）；GDK_GL=disable 稳定但黑屏（Flutter 拿不到 GL）
+- **解决**：launcher 的 Wayland 分支加 `LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libEGL_mesa.so.0`（进程级，不改系统链接）——GTK 层走 Mesa EGL，Flutter 仍用 libGFX_hisi 硬件渲染（eglinfo 实测 vendor=HUAWEI），两者不再互相踩踏
+- **验证**：10 分钟稳定运行（原 30-120s 必崩）、WAYLAND_DEBUG 0 次 discarded、渲染分布与正常状态逐行一致（y=0: 79961 蓝色像素）、CPU 13%（硬件渲染非软渲染）
+
 ---
 
 ## 7. 相关文件清单（l420x 改动）
@@ -288,3 +298,4 @@ qdbus org.kde.KWin /Screenshot org.kde.kwin.Screenshot.screenshotArea 0 0 2880 1
 | `pubspec.yaml` | 字体资源注册 |
 | `assets/fonts/DroidSansFallbackFull.ttf` | 合并中文字体 |
 | `docs/build-notes-l420x.md` | 本文档 |
+| `/usr/bin/kelivo`（系统 launcher，deb 携带） | Wayland 分支加 `LD_PRELOAD libEGL_mesa.so.0` 解决 GTK/Flutter 共享 wl_display 崩溃 |
